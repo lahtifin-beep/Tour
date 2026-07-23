@@ -7,6 +7,8 @@
     <style>
         html, body { width: 100%; height: 100%; margin: 0; padding: 0; overflow: hidden; background-color: #000; font-family: sans-serif; }
         #viewer { width: 100%; height: 100%; position: absolute; top: 0; left: 0; }
+        
+        /* Стили для интерактивных стрелок переходов */
         .portal-btn {
             position: absolute; width: 45px; height: 45px; border-radius: 50%; border: 3px solid #fff;
             background: rgba(255, 255, 255, 0.3); cursor: pointer; transform: translate(-50%, -50%); display: none;
@@ -19,6 +21,8 @@
         }
         .next-btn::after { transform: translate(-70%, -50%) rotate(-45deg); }
         .prev-btn::after { transform: translate(-30%, -50%) rotate(135deg); }
+        
+        /* Плашка с названием текущей панорамы */
         #room-title { position: absolute; top: 20px; left: 50%; transform: translateX(-50%); color: #fff; background: rgba(0,0,0,0.6); padding: 8px 16px; border-radius: 20px; font-size: 16px; pointer-events: none; z-index: 5; }
     </style>
 </head>
@@ -27,7 +31,7 @@
     <div id="viewer"></div>
     <div id="room-title">Загрузка тура...</div>
     
-    <!-- Две автоматические кнопки: Назад и Вперед -->
+    <!-- Две автоматические стрелки: Назад и Вперед -->
     <div id="portal-prev" class="portal-btn prev-btn" title="Назад"></div>
     <div id="portal-next" class="portal-btn next-btn" title="Вперед"></div>
 
@@ -38,8 +42,8 @@
         viewer.appendChild(canvas);
         const gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl');
 
-        // Автоматическая генерация карты тура из адресной строки
-        let playlist = ['panoramatur1.png', 'panoramatur2.png']; // Базовый тур, если ссылка пустая
+        // Считываем список картинок из вашей ссылки
+        let playlist = ['panoramatur1.png', 'panoramatur2.png']; 
         const urlParams = new URLSearchParams(window.location.search);
         const pParam = urlParams.get('p');
         if (pParam) playlist = pParam.split(',');
@@ -48,7 +52,7 @@
         let lon = 0, lat = 0, startX, startY, startLon, startLat, isMousedown = false;
         let img = new Image(), tex, rotLoc, aspLoc;
 
-        // Координаты порталов: "Вперед" стоит по центру (0), "Назад" за спиной (3.14)
+        // Точные координаты расположения стрелок: "Вперед" прямо перед нами (0), "Назад" ровно за спиной (3.14)
         const portalsConfig = {
             next: { lon: 0.0, lat: -0.2 },
             prev: { lon: 3.14, lat: -0.2 }
@@ -69,7 +73,7 @@
             currentIndex = index;
             const filename = playlist[currentIndex];
             
-            // Красивое имя комнаты из названия файла (просто убираем расширение)
+            // Выводим имя файла красивыми заглавными буквами без расширения .png
             rTitle.innerText = filename.split('.')[0].toUpperCase();
             
             img.onload = () => {
@@ -117,14 +121,14 @@
         }
 
         function updatePortals() {
-            // Показываем кнопку "Вперед", только если есть следующая комната
+            // Показываем кнопку "Вперед", только если впереди ЕСТЬ следующая комната
             if (currentIndex < playlist.length - 1) {
                 positionPortal(pNext, portalsConfig.next);
             } else {
                 pNext.style.display = 'none';
             }
 
-            // Показываем кнопку "Назад", только если есть предыдущая комната
+            // Показываем кнопку "Назад", только если сзади ЕСТЬ предыдущая комната
             if (currentIndex > 0) {
                 positionPortal(pPrev, portalsConfig.prev);
             } else {
