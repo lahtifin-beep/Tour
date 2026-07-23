@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>3D Виртуальный Тур</title>
+    <style>
+        html, body { width: 100%; height: 100%; margin: 0; padding: 0; overflow: hidden; background-color: #000; }
+        #viewer { width: 100%; height: 100%; position: absolute; top: 0; left: 0; }
+        
+        /* Стиль для кнопки-портала перемещения */
+        .portal-btn {
+            position: absolute; width: 40px; height: 40px;
+            border-radius: 50%; border: 3px solid #fff;
+            background: rgba(255, 255, 255, 0.3); cursor: pointer;
+            transform: translate(-50%, -50%); display: none;
+            box-shadow: 0 0 15px rgba(0,0,0,0.6); transition: all 0.2s ease;
+        }
+        .portal-btn:hover { background: #fff; transform: translate(-50%, -50%) scale(1.2); }
+    </style>
+</head>
+<body>
+
+    <div id="viewer"></div>
+    <!-- Виртуальная кнопка перехода -->
+    <div id="portal" class="portal-btn" title="Перейти в другую точку"></div>
+
+    <script>
+        const viewer = document.getElementById('viewer');
+        const portal = document.getElementById('portal');
+        const canvas = document.createElement('canvas');
+        viewer.appendChild(canvas);
+        const gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl');
+
+        // База данных вашего тура (храним имена файлов и координаты кнопки перехода)
+        const scenes = {
+            point1: { image: 'panoramatur1.png', portal: { lon: 0.3, lat: -0.1, target: 'point2' } },
+            point2: { image: 'panoramatur2.png', portal: { lon: 3.1, lat: -0.1, target: 'point1' } }
+        };
+        let currentScene = 'point1';
+
+        let lon = 0, lat = 0, startX, startY, startLon, startLat, isMousedown = false;
+        let img = new Image(), tex, rotLoc, aspLoc;
+
+        const vs = `attribute vec3 p; varying vec3 v; void main() { v = p; gl_Position = vec4(p.x, p.y, 1.0, 1.0); }`;
+        const fs = `precision mediump float; uniform sampler2D t; uniform vec2 aspect; uniform vec2 rot; varying vec3 v;
+            void main() {
+                vec3 d = vec3(v.x * aspect.x, v.y * aspect.y, 1.0); d = normalize(d); d.x = -d.x;
+                float sinX = sin(rot.y), cosX = cos(rot.y), sinY = sin(rot.x), cosY = cos(rot.x);
+                vec3 r = vec3(d.x * cosY + (d.y * sinX - d.z * cosX) * sinY, d.y * cosX + d.z * sinX, -d.x * sinY + (d.y * sinX - d.z * cosX) * cosY);
+                r = normalize(r);
+                gl_FragColor = texture2D(t, vec2((atan(r.x, r.z) + 3.14159) / 6.28318, (1.57079 - asin(r.y)) / 3.14159));
+            }`;
+
+        function loadScene(id) {
+            currentScene = id;
+            img.onload = () => {
+                if (!tex) initGL();
+                gl.bindTexture(gl.TEXTURE_2D, tex);
+                gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, img);
+                updatePortal();
+            };
+            img.src = scenes[id].image;
+        }
+
+        function initGL() {
+            resize(); window.addEventListener('resize', () => resize());
+            const vS = gl.createShader(gl.VERTEX_SHADER); gl.shaderSource(vS, vs); gl.compileShader(vS);
+            const fS = gl.createShader(gl.FRAGMENT_SHADER); gl.shaderSource(fS, fs); gl.compileShader(fS);
+            const prog = gl.createProgram(); gl.attachShader(prog, vS); gl.attachShader(prog, fS); gl.linkProgram(prog); gl.useProgram(prog);
+            const buf = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+            gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1,0, -1,1,0, 1,-1,0, 1,-1,0, -1,1,0, 1,1,0]), gl.STATIC_DRAW);
+            const pLoc = gl.getAttribLocation(prog, "p"); gl.enableVertexAttribArray(pLoc); gl.vertexAttribPointer(pLoc, 3, gl.FLOAT, false, 0, 0);
+            tex = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D, tex);
+            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+            gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+            rotLoc = gl.getUniformLocation(prog, "rot"); aspLoc = gl.getUniformLocation(prog, "aspect");
+            render();
+        }
+
+        function resize() {
+            canvas.width = viewer.clientWidth; canvas.height = viewer.clientHeight;
+            gl.viewport(0, 0, canvas.width, canvas.height);
+        }
+
+        function updatePortal() {
+            const p = scenes[currentScene].portal;
+            // Вычисляем, где должна находиться кнопка перехода на экране в зависимости от поворота головы
+            let diffLon = p.lon - lon;
+            while (diffLon > Math.PI) diffLon -= Math.PI * 2;
+            while (diffLon < -Math.PI) diffLon += Math.PI * 2;
+            
+            if (Math.cos(diffLon) > 0) {
+                const screenX = canvas.width / 2 - Math.sin(diffLon) * (canvas.width / 2);
+                const screenY = canvas.height / 2 + Math.sin(p.lat - lat) * (canvas.height / 2);
+                portal.style.left = screenX + 'px'; portal.style.top = screenY + 'px';
+                portal.style.display = 'block';
+            } else {
+                portal.style.display = 'none';
+            }
+        }
+
+        viewer.addEventListener('pointerdown', (e) => {
+            isMousedown = true; startX = e.clientX; startY = e.clientY; startLon = lon; startLat = lat;
+        });
+        window.addEventListener('pointermove', (e) => {
+            if (!isMousedown) return;
+            // Управление инвертировано в стиле Google Maps
+            lon = startLon - (e.clientX - startX) * 0.003;
+            lat = startLat - (e.clientY - startY) * 0.003;
+            lat = Math.max(-1.4, Math.min(1.4, lat));
+            updatePortal();
+        });
+        window.addEventListener('pointerup', () => isMousedown = false);
+
+        portal.addEventListener('click', () => {
+            loadScene(scenes[currentScene].portal.target);
+        });
+
+        function render() {
+            requestAnimationFrame(render);
+            gl.uniform2f(aspLoc, canvas.width / canvas.height, 1.0);
+            gl.uniform2f(rotLoc, lon, lat);
+            gl.drawArrays(gl.TRIANGLES, 0, 6);
+        }
+
+        loadScene('point1');
+    </script>
+</body>
+</html>
